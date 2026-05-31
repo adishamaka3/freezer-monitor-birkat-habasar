@@ -7,14 +7,23 @@ const qrcode = require('qrcode-terminal');
 const expressApp = express();
 expressApp.use(express.json());
 
-// 2. אתחול ה-WhatsApp Client (עם שמירת סשן מקומית)
+// 2. אתחול ה-WhatsApp Client (מותאם לענן ולמחשב מקומי)
 const whatsapp = new Client({
     authStrategy: new LocalAuth({
-        clientId: "fridge-alerts-session" // מזהה ייחודי לסשן הזה
+        clientId: "fridge-alerts-session"
     }),
     puppeteer: {
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'] // מונע בעיות הרשאה בתוך Electron
+        // הארגומנטים האלה קריטיים כדי ש-Puppeteer יצליח לרוץ בשרת לינוקס בענן
+        args: [
+            '--no-sandbox', 
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process'
+        ] 
     }
 });
 

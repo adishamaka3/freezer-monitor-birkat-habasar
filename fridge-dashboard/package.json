@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "start-whatsapp": "node fridge-dashboard/index.js"
   },
   "dependencies": {
     "chart.js": "^4.5.1",
@@ -24,4 +25,5 @@
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4"
   }
+  
 }
