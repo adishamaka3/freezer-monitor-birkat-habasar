@@ -1,0 +1,4 @@
+2026/05/31-12:10:46.704 7b04 Creating DB D:\ESP32\atar\fridge-dashboard\what\.wwebjs_auth\session-fridge-alerts-session\Default\Session Storage since it was missing.
+2026/05/31-12:10:46.988 7b04 Reusing MANIFEST D:\ESP32\atar\fridge-dashboard\what\.wwebjs_auth\session-fridge-alerts-session\Default\Session Storage/MANIFEST-000001
+2026/05/31-12:10:46.989 7b04 Recovering log #3
+2026/05/31-12:10:46.991 7b04 Reusing old log D:\ESP32\atar\fridge-dashboard\what\.wwebjs_auth\session-fridge-alerts-session\Default\Session Storage/000003.log 

@@ -1,0 +1,4 @@
+2026/05/31-12:10:46.670 835c Creating DB D:\ESP32\atar\fridge-dashboard\what\.wwebjs_auth\session-fridge-alerts-session\Default\Site Characteristics Database since it was missing.
+2026/05/31-12:10:46.787 835c Reusing MANIFEST D:\ESP32\atar\fridge-dashboard\what\.wwebjs_auth\session-fridge-alerts-session\Default\Site Characteristics Database/MANIFEST-000001
+2026/05/31-12:10:46.787 835c Recovering log #3
+2026/05/31-12:10:46.788 835c Reusing old log D:\ESP32\atar\fridge-dashboard\what\.wwebjs_auth\session-fridge-alerts-session\Default\Site Characteristics Database/000003.log 

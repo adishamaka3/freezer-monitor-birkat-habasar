@@ -1,0 +1,4 @@
+2026/05/31-12:10:46.667 8d04 Creating DB D:\ESP32\atar\fridge-dashboard\what\.wwebjs_auth\session-fridge-alerts-session\Default\Sync Data\LevelDB since it was missing.
+2026/05/31-12:10:46.764 8d04 Reusing MANIFEST D:\ESP32\atar\fridge-dashboard\what\.wwebjs_auth\session-fridge-alerts-session\Default\Sync Data\LevelDB/MANIFEST-000001
+2026/05/31-12:10:46.765 8d04 Recovering log #3
+2026/05/31-12:10:46.765 8d04 Reusing old log D:\ESP32\atar\fridge-dashboard\what\.wwebjs_auth\session-fridge-alerts-session\Default\Sync Data\LevelDB/000003.log 
