@@ -1,16 +1,22 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
 const express = require('express');
+const cors = require('cors');
 
 const app = express();
+const PORT = process.env.PORT || 10000;
+
+// משתנים גלובליים לשמירת הסטטוס העדכני של הבוט
+let qrCodeData = null;
+let connectionStatus = 'disconnected'; // אפשרויות: disconnected, loading, ready
+
+// הגדרת CORS כדי לאפשר לאתר ב-Vercel לגשת לנתונים
+app.use(cors({
+    origin: '*' // בשביל אבטחה מקסימלית בעתיד, אפשר להחליף בכתובת המדויקת של ה-Vercel שלך
+}));
+
 app.use(express.json());
 
-const PORT = process.env.PORT || 4000;
-
-// משתנים גלובליים לשמירת מצב הבוט עבור האתר
-let qrCodeRaw = null;
-let botStatus = 'initializing'; // 'initializing', 'qr_ready', 'ready', 'disconnected'
-
+// 1. אתחול הלקוח עם הגדרות אופטימיזציה מיוחדות ל-Render (מניעת חריגת 512MB RAM)
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
@@ -22,77 +28,71 @@ const client = new Client({
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--single-process', // חוסך המון זיכרון, מונע מכרום לפתוח כמה תהליכים
-            '--disable-gpu'     // מכבה האצת גרפיקה שלוקחת RAM
-        ],
-        executablePath: process.env.PUPPETEER_CACHE_DIR 
-            ? require('path').join(process.env.PUPPETEER_CACHE_DIR, 'chrome', 'linux-146.0.7680.31', 'chrome-linux64', 'chrome') 
-            : undefined
+            '--disable-gpu'
+        ]
     }
 });
 
-// אירועי וואטסאפ
-whatsapp.on('qr', (qr) => {
-    qrcode.generate(qr, { small: true }); // עדיין מדפיס בלוג לגיבוי
-    qrCodeRaw = qr; // שומר את ה-QR כדי שהאתר יוכל למשוך אותו ולהציג כפתור סריקה
-    botStatus = 'qr_ready';
+// ==========================================
+//          ניהול אירועים של וואטסאפ
+// ==========================================
+
+// אירוע קבלת קוד QR לסריקה
+client.on('qr', (qr) => {
+    console.log('--- קוד QR חדש התקבל ---');
+    qrCodeData = qr;
+    connectionStatus = 'disconnected';
 });
 
-whatsapp.on('ready', () => {
-    console.log('WhatsApp Client is READY!');
-    qrCodeRaw = null;
-    botStatus = 'ready';
+// אירוע טעינה לאחר סריקה
+client.on('loading_screen', (percent, message) => {
+    console.log(`טוען צ'אטים: ${percent}% - ${message}`);
+    connectionStatus = 'loading';
 });
 
-whatsapp.on('disconnected', (reason) => {
-    console.log('WhatsApp was disconnected:', reason);
-    qrCodeRaw = null;
-    botStatus = 'disconnected';
+// אירוע חיבור מוצלח
+client.on('ready', () => {
+    console.log('--- הבוט מחובר ומוכן לעבודה! ---');
+    qrCodeData = null; // מנקים את ה-QR כי המכשיר כבר מחובר
+    connectionStatus = 'ready';
 });
 
-// --- נתיבי API עבור ה-Dashboard של Next.js ---
+// אירוע ניתוק מהוואטסאפ
+client.on('disconnected', (reason) => {
+    console.log('הבוט נתקע או נותק מהמכשיר:', reason);
+    qrCodeData = null;
+    connectionStatus = 'disconnected';
+    // ניסיון אתחול מחדש אוטומטי במידת הצורך
+    client.initialize();
+});
 
-// 1. בדיקת סטטוס הבוט וקבלת ה-QR הנוכחי
+// ==========================================
+//          נתיבי ה-API עבור ה-Dashboard
+// ==========================================
+
+// נקודת קצה (Endpoint) שהאתר ב-Vercel מושך ממנה מידע בכל 10 שניות
 app.get('/api/whatsapp-status', (req, res) => {
     res.json({
-        status: botStatus,
-        hasQr: !!qrCodeRaw,
-        qr: qrCodeRaw // האתר יקבל את זה ויהפוך לברקוד על המסך
+        status: connectionStatus,
+        qr: qrCodeData
     });
 });
 
-// 2. פקודת ניתוק (Logout) מהאתר
-app.post('/api/whatsapp-logout', async (req, res) => {
-    try {
-        if (botStatus === 'ready') {
-            await whatsapp.logout();
-            botStatus = 'disconnected';
-            qrCodeRaw = null;
-            return res.json({ success: true, message: 'מכשיר נותק בהצלחה' });
-        }
-        res.status(400).json({ success: false, message: 'אין מכשיר מחובר כעת' });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
+// נקודת קצה לבדיקת תקינות כללית של השרת (Health Check)
+app.get('/', (req, res) => {
+    res.send('WhatsApp Gateway is up and running!');
 });
 
-// 3. הנתיב הקיים שלך לשליחת הודעות התראה מהמערכת
-app.post('/send-alert', async (req, res) => {
-    const { phone, message } = req.body;
-    try {
-        if (botStatus !== 'ready') {
-            return res.status(400).json({ error: 'שרת הוואטסאפ אינו מחובר למכשיר' });
-        }
-        const formattedPhone = phone.includes('@c.us') ? phone : `${phone}@c.us`;
-        await whatsapp.sendMessage(formattedPhone, message);
-        res.json({ success: true });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
+// ==========================================
+//          הפעלת השרת והבוט
+// ==========================================
 
 app.listen(PORT, () => {
     console.log(`WhatsApp Gateway running on port ${PORT}`);
+    
+    // הפעלת הבוט רק לאחר שהשרת באוויר
+    console.log('מאתחל את Puppeteer והוואטסאפ...');
+    client.initialize().catch(err => {
+        console.error('שגיאה באתחול הבוט:', err);
+    });
 });
-
-whatsapp.initialize();
