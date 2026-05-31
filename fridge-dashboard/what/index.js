@@ -11,21 +11,23 @@ const PORT = process.env.PORT || 4000;
 let qrCodeRaw = null;
 let botStatus = 'initializing'; // 'initializing', 'qr_ready', 'ready', 'disconnected'
 
-const whatsapp = new Client({
-    authStrategy: new LocalAuth({
-        clientId: "fridge-alerts-session"
-    }),
+const client = new Client({
+    authStrategy: new LocalAuth(),
     puppeteer: {
         headless: true,
         args: [
-            '--no-sandbox', 
+            '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--single-process'
-        ] 
+            '--single-process', // חוסך המון זיכרון, מונע מכרום לפתוח כמה תהליכים
+            '--disable-gpu'     // מכבה האצת גרפיקה שלוקחת RAM
+        ],
+        executablePath: process.env.PUPPETEER_CACHE_DIR 
+            ? require('path').join(process.env.PUPPETEER_CACHE_DIR, 'chrome', 'linux-146.0.7680.31', 'chrome-linux64', 'chrome') 
+            : undefined
     }
 });
 
