@@ -1,20 +1,22 @@
-//const { app, BrowserWindow } = require('electron');
-const express = require('express');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
+const express = require('express');
 
-// 1. הגדרת שרת ה-Express המקומי
-const expressApp = express();
-expressApp.use(express.json());
+const app = express();
+app.use(express.json());
 
-// 2. אתחול ה-WhatsApp Client (מותאם לענן ולמחשב מקומי)
+const PORT = process.env.PORT || 4000;
+
+// משתנים גלובליים לשמירת מצב הבוט עבור האתר
+let qrCodeRaw = null;
+let botStatus = 'initializing'; // 'initializing', 'qr_ready', 'ready', 'disconnected'
+
 const whatsapp = new Client({
     authStrategy: new LocalAuth({
         clientId: "fridge-alerts-session"
     }),
     puppeteer: {
         headless: true,
-        // הארגומנטים האלה קריטיים כדי ש-Puppeteer יצליח לרוץ בשרת לינוקס בענן
         args: [
             '--no-sandbox', 
             '--disable-setuid-sandbox',
@@ -27,60 +29,68 @@ const whatsapp = new Client({
     }
 });
 
-// הצגת קוד ה-QR בטרמינל כשצריך להתחבר
+// אירועי וואטסאפ
 whatsapp.on('qr', (qr) => {
-    console.log('👇 סרוק את קוד ה-QR הבא עם הוואטסאפ שלך:');
-    qrcode.generate(qr, { small: true });
+    qrcode.generate(qr, { small: true }); // עדיין מדפיס בלוג לגיבוי
+    qrCodeRaw = qr; // שומר את ה-QR כדי שהאתר יוכל למשוך אותו ולהציג כפתור סריקה
+    botStatus = 'qr_ready';
 });
 
-// הודעה כשהחיבור לוואטסאפ הצליח
 whatsapp.on('ready', () => {
-    console.log('🤖 WhatsApp Gateway מוכן ומחובר לחשבון שלך!');
+    console.log('WhatsApp Client is READY!');
+    qrCodeRaw = null;
+    botStatus = 'ready';
 });
 
-whatsapp.on('auth_failure', (msg) => {
-    console.error('❌ שגיאת התחברות לוואטסאפ, נסה לסרוק שוב:', msg);
+whatsapp.on('disconnected', (reason) => {
+    console.log('WhatsApp was disconnected:', reason);
+    qrCodeRaw = null;
+    botStatus = 'disconnected';
+});
+
+// --- נתיבי API עבור ה-Dashboard של Next.js ---
+
+// 1. בדיקת סטטוס הבוט וקבלת ה-QR הנוכחי
+app.get('/api/whatsapp-status', (req, res) => {
+    res.json({
+        status: botStatus,
+        hasQr: !!qrCodeRaw,
+        qr: qrCodeRaw // האתר יקבל את זה ויהפוך לברקוד על המסך
+    });
+});
+
+// 2. פקודת ניתוק (Logout) מהאתר
+app.post('/api/whatsapp-logout', async (req, res) => {
+    try {
+        if (botStatus === 'ready') {
+            await whatsapp.logout();
+            botStatus = 'disconnected';
+            qrCodeRaw = null;
+            return res.json({ success: true, message: 'מכשיר נותק בהצלחה' });
+        }
+        res.status(400).json({ success: false, message: 'אין מכשיר מחובר כעת' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// 3. הנתיב הקיים שלך לשליחת הודעות התראה מהמערכת
+app.post('/send-alert', async (req, res) => {
+    const { phone, message } = req.body;
+    try {
+        if (botStatus !== 'ready') {
+            return res.status(400).json({ error: 'שרת הוואטסאפ אינו מחובר למכשיר' });
+        }
+        const formattedPhone = phone.includes('@c.us') ? phone : `${phone}@c.us`;
+        await whatsapp.sendMessage(formattedPhone, message);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.listen(PORT, () => {
+    console.log(`WhatsApp Gateway running on port ${PORT}`);
 });
 
 whatsapp.initialize();
-
-// 3. יצירת ה-API ש-Next.js יקרא לו בזמן חריגה
-expressApp.post('/send-alert', async (req, res) => {
-    const { phoneNumber, message } = req.body;
-
-    if (!phoneNumber || !message) {
-        return res.status(400).json({ error: 'Missing phone or message' });
-    }
-
-    try {
-        // פורמט מספר הטלפון שוואטסאפ דורש (למשל: 9725XXXXXXXX@c.us)
-        // הקוד הבא מוודא שאם המספר מתחיל ב-05, הוא יומר לקידומת ישראל 972
-        let formattedPhone = phoneNumber.trim();
-        if (formattedPhone.startsWith('0')) {
-            formattedPhone = `972${formattedPhone.slice(1)}`;
-        }
-        if (!formattedPhone.endsWith('@c.us')) {
-            formattedPhone = `${formattedPhone}@c.us`;
-        }
-
-        console.log(`📱 מנסה לשלוח הודעה למספר: ${formattedPhone}`);
-        
-        // השליחה בפועל דרך הוואטסאפ של אלקטרון
-        await whatsapp.sendMessage(formattedPhone, message);
-        
-        console.log(`🚀 ההתראה נשלחה בוואטסאפ בהצלחה!`);
-        return res.status(200).json({ success: true });
-    } catch (error) {
-        console.error('❌ נכשלה שליחת ההודעה מאלקטרון:', error.message);
-        return res.status(500).json({ error: error.message });
-    }
-});
-
-// הפעלת השרת על פורט 4000
-expressApp.listen(4000, () => {
-    console.log('🔌 Electron HTTP Server רץ ומקשיב בפורט 4000');
-});
-
-// --- כאן נשאר קוד האלקטרון הרגיל שלך שמנהל את החלונות (BrowserWindow) ---
-// למשל:
-// app.whenReady().then(() => { ... })
