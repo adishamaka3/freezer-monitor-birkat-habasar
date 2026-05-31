@@ -5,108 +5,146 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// פונקציית עזר לשליחת הודעה ל-WhatsApp Gateway המעודכן שלך בפורט 4000
+// פונקציית עזר לשליחת הודעה לבוט הוואטסאפ שרץ ב-Render
 async function sendWhatsAppMessage(phone, text) {
   try {
-    // התאמה מדויקת לפורט 4000 ולנתיב /send-alert של הבוט שלך
-    const gatewayUrl = 'http://localhost:4000/send-alert'; 
+    // השתמש במשתנה סביבה עבור הבוט ב-Render, או שים פה ישירות את הכתובת של Render שקיבלת
+    const gatewayUrl = process.env.WHATSAPP_BOT_URL || 'https://birkat-habasar-whatsapp.onrender.com/send-alert'; 
     
     const response = await fetch(gatewayUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      // התאמה למפתחות שהבוט מצפה להם: phoneNumber ו-message
-      body: JSON.stringify({ phoneNumber: phone, message: text })
+      // התאמה למפתחות שהבוט המשודרג ב-index.js מצפה להם (phone ו-message)
+      body: JSON.stringify({ phone: phone, message: text })
     });
     
     if (!response.ok) throw new Error(`Gateway returned status ${response.status}`);
     console.log(`📱 WhatsApp notification sent successfully to ${phone}`);
     return true;
   } catch (error) {
-    console.error(`❌ Failed to send WhatsApp via Gateway:`, error.message);
+    console.error(`❌ Failed to send WhatsApp via Render Gateway:`, error.message);
     return false;
   }
 }
 
 export async function GET() {
   try {
-    console.log("⏱️ Starting scheduled check for disconnections and temperature anomalies...");
+    console.log("⏱️ Starting dynamic check for disconnections and temperature anomalies...");
 
-    // 1. שליפת כל המקררים מ-Supabase
+    // 1. שליפת הגדרת הטיימר הדינמית מהטבלה החדשה שיצרנו
+    const { data: globalSettings, error: settingsError } = await supabase
+      .from('whatsapp_settings')
+      .select('interval_minutes')
+      .eq('id', 'global_config')
+      .single();
+
+    // אם אין הגדרה, נרתום 10 דקות כברירת מחדל
+    const dynamicIntervalMinutes = settingsError ? 10 : (globalSettings?.interval_minutes || 10);
+    const COOLDOWN_IN_SECONDS = dynamicIntervalMinutes * 60;
+
+    console.log(`⏱️ Current alert interval configured from Dashboard: ${dynamicIntervalMinutes} minutes.`);
+
+    // 2. שליפת כל המקררים מטבלת fridge_status
     const { data: fridges, error } = await supabase.from('fridge_status').select('*');
     if (error) throw error;
 
     const currentUnix = Math.floor(Date.now() / 1000);
-    const ONE_HOUR_IN_SECONDS = 3600; // זמן צינון בין הודעות (שעה אחת)
 
     for (const fridge of fridges) {
       const lastSeenUnix = Number(fridge.last_seen || 0);
       const minutesSinceLastSeen = lastSeenUnix ? (currentUnix - lastSeenUnix) / 60 : Infinity;
       const lastAlertUnix = Number(fridge.last_alert_sent || 0);
-      const isCooldownActive = (currentUnix - lastAlertUnix) < ONE_HOUR_IN_SECONDS;
+      
+      // בדיקה האם זמן הצינון הדינמי (5 דקות, 10 דקות וכו') עדיין פעיל
+      const isCooldownActive = (currentUnix - lastAlertUnix) < COOLDOWN_IN_SECONDS;
+      
+      // המצב הקודם שנשמר בבסיס הנתונים ('normal', 'temp_error', 'disconnected')
+      const previousStatus = fridge.last_status || 'normal';
 
-      // הדפסת לוגים מפורטים לטרמינל לניתוח מהיר
       console.log(`-----------------------------------------------`);
-      console.log(`🔍 סורק מקרר: ${fridge.fridge_id}`);
-      console.log(`🌡️ טמפ' נוכחית: ${fridge.current_temp}°C | מקסימום: ${fridge.max_temp}°C | מינימום: ${fridge.min_temp_limit}°C`);
-      console.log(`⏳ צינון (Cooldown) פעיל? ${isCooldownActive ? "כן" : "לא"} (התראה אחרונה: ${lastAlertUnix})`);
+      console.log(`🔍 Scanning Fridge: ${fridge.fridge_id} (${fridge.fridge_name || 'ללא שם'})`);
+      console.log(`🌡️ Temp: ${fridge.current_temp}°C | Max Allowed: ${fridge.max_temp}°C | Current System Cooldown: ${isCooldownActive ? "Active" : "Inactive"}`);
 
-      // בדיקת ניתוק
+      // א. בדיקת סטטוס ניתוק נוכחי
       const maxAllowedInterval = (fridge.update_interval_minutes || 10) + 3;
-      const isDisconnected = minutesSinceLastSeen > maxAllowedInterval;
+      const isCurrentlyDisconnected = minutesSinceLastSeen > maxAllowedInterval;
 
-      if (isDisconnected) {
-        console.log(`❌ המקרר מזוהה כמנותק!`);
-        if (!isCooldownActive) {
-          const message = `🚨 *התראת ניתוק מקרר* 🚨\n\nהמקרר *${fridge.fridge_name || fridge.fridge_id}* לא יצר קשר למעלה מ-${minutesSinceLastSeen.toFixed(0)} דקות!\nיש לבדוק חיבור לחשמל ואינטרנט בשטח.`;
+      // ב. בדיקת סטטוס חריגת טמפרטורה נוכחי
+      const isTempHigh = fridge.current_temp > fridge.max_temp;
+      const isTempLow = fridge.min_temp_limit !== null && fridge.current_temp < fridge.min_temp_limit;
+      const isCurrentlyTempError = isTempHigh || isTempLow;
+
+      // נקבע את הסטטוס הנוכחי המדויק של המקרר בסבב זה
+      let currentStatus = 'normal';
+      if (isCurrentlyDisconnected) {
+        currentStatus = 'disconnected';
+      } else if (isCurrentlyTempError) {
+        currentStatus = 'temp_error';
+      }
+
+      // ========================================================
+      // 🔥 לוגיקה חכמה 1: חזרה לשגרה (התפרצות מחוץ לטיימר!)
+      // ========================================================
+      if (currentStatus === 'normal' && previousStatus !== 'normal') {
+        console.log(`🎉 המקרר חזר לפעולה תקינה! שולח הודעת הרגעה מיידית מחוץ לטיימר.`);
+        
+        let recoveryMessage = `✅ *צפירת הרגעה: המקרר חזר לשגרה* ✅\n\nהמקרר *${fridge.fridge_name || fridge.fridge_id}* חזר לפעול בצורה תקינה!\n\n🌡️ טמפרטורה נוכחית: *${fridge.current_temp.toFixed(1)}°C*\n🔌 סטטוס: מחובר ומסתנכרן.`;
+        
+        if (fridge.phone_number) {
+          await sendWhatsAppMessage(fridge.phone_number, recoveryMessage);
+        }
+
+        // עדכון בסיס הנתונים שהכל תקין, ומאפסים את הצינון כדי שיהיה מוכן לתקלה הבאה
+        await supabase.from('fridge_status')
+          .update({ last_status: 'normal', last_alert_sent: currentUnix })
+          .eq('fridge_id', fridge.fridge_id);
           
-          if (fridge.phone_number) {
-            console.log(`📱 מנסה לשלוח הודעת ניתוק למספר: ${fridge.phone_number}`);
+        continue; // מסיימים את הטיפול במקרר הזה
+      }
+
+      // ========================================================
+      // 🚨 לוגיקה חכמה 2: טיפול בתקלות (ניתוק או חריגת טמפרטורה)
+      // ========================================================
+      if (currentStatus !== 'normal') {
+        
+        // אם זה שינוי מצב לרעה (למשל: היה תקין ופתאום התנתק, או היה תקין ופתאום נהיה חם) - שולחים מייד!
+        const isNewEmergency = previousStatus !== currentStatus;
+
+        if (isNewEmergency || !isCooldownActive) {
+          let message = "";
+
+          if (currentStatus === 'disconnected') {
+            console.log(`🚨 שליחת התראת ניתוק...`);
+            message = `🚨 *התראת ניתוק מקרר* 🚨\n\nהמקרר *${fridge.fridge_name || fridge.fridge_id}* לא יצר קשר למעלה מ-${minutesSinceLastSeen.toFixed(0)} דקות!\nיש לבדוק חיבור לחשמל ואינטרנט בשטח.`;
+          } else if (currentStatus === 'temp_error') {
+            console.log(`🚨 שליחת התראת טמפרטורה...`);
+            if (isTempHigh) {
+              message = `🚨 *התראת חריגת חום קריטית* 🚨\n\nהמקרר *${fridge.fridge_name || fridge.fridge_id}* חורג מטמפרטורת המקסימום!\n\n🌡️ טמפ' נוכחית: *${fridge.current_temp.toFixed(1)}°C*\n📈 מקסימום מותר: ${fridge.max_temp.toFixed(1)}°C\n\n⚠️ יש לבדוק שהדלת סגורה ושהמקרר תקין!`;
+            } else if (isTempLow) {
+              message = `❄️ *התראת סכנת קיפאון (אובר קור)* ❄️\n\nהמקרר *${fridge.fridge_name || fridge.fridge_id}* קר מדי!\n\n🌡️ טמפ' נוכחית: *${fridge.current_temp.toFixed(1)}°C*\n📉 מינימום מותר: ${fridge.min_temp_limit.toFixed(1)}°C\n\n⚠️ סכנת קפיאה של סחורה, מומלץ לבדוק את התרמוסטט.`;
+            }
+          }
+
+          if (fridge.phone_number && message) {
             const success = await sendWhatsAppMessage(fridge.phone_number, message);
             if (success) {
-              await supabase.from('fridge_status').update({ last_alert_sent: currentUnix }).eq('fridge_id', fridge.fridge_id);
+              // מעדכנים את זמן ההתראה האחרון ואת סוג התקלה הנוכחי
+              await supabase.from('fridge_status')
+                .update({ last_alert_sent: currentUnix, last_status: currentStatus })
+                .eq('fridge_id', fridge.fridge_id);
             }
           }
         } else {
-          console.log(`⚠️ מדלג על הודעת ניתוק בגלל Cooldown פעיל.`);
-        }
-        continue; // אם הוא מנותק, מדלגים על בדיקת הטמפרטורה
-      }
-
-      // בדיקת חריגות חום וקור
-      const isTempHigh = fridge.current_temp > fridge.max_temp;
-      const isTempLow = fridge.min_temp_limit !== null && fridge.current_temp < fridge.min_temp_limit;
-
-      if (isTempHigh) console.log(`🚨 חריגה זוהתה: המקרר חם מדי!`);
-      if (isTempLow) console.log(`❄️ חריגה זוהתה: המקרר קר מדי!`);
-
-      if (isTempHigh || isTempLow) {
-        if (isCooldownActive) {
-          console.log(`⚠️ מדלג על הודעת חריגה בגלל Cooldown פעיל.`);
-          continue; 
-        }
-
-        let message = "";
-        if (isTempHigh) {
-          message = `🚨 *התראת חריגת חום קריטית* 🚨\n\nהמקרר *${fridge.fridge_name || fridge.fridge_id}* חורג מטמפרטורת המקסימום!\n\n🌡️ טמפ' נוכחית: *${fridge.current_temp.toFixed(1)}°C*\n📈 מקסימום מותר: ${fridge.max_temp.toFixed(1)}°C\n\n⚠️ יש לבדוק שהדלת סגורה ושהמקרר תקין!`;
-        } else if (isTempLow) {
-          message = `❄️ *התראת סכנת קיפאון (אובר קור)* ❄️\n\nהמקרר *${fridge.fridge_name || fridge.fridge_id}* קר מדי!\n\n🌡️ טמפ' נוכחית: *${fridge.current_temp.toFixed(1)}°C*\n📉 מינימום מותר: ${fridge.min_temp_limit.toFixed(1)}°C\n\n⚠️ סכנת קפיאה של סחורה, מומלץ לבדוק את התרמוסטט.`;
-        }
-
-        if (fridge.phone_number) {
-          console.log(`📱 מנסה לשלוח הודעת חריגה למספר: ${fridge.phone_number}`);
-          const success = await sendWhatsAppMessage(fridge.phone_number, message);
-          if (success) {
-            await supabase.from('fridge_status').update({ last_alert_sent: currentUnix }).eq('fridge_id', fridge.fridge_id);
-          }
+          console.log(`⚠️ התקלה נמשכת, אך מדלג על הודעה נוספת בגלל טיימר צינון פעיל (${dynamicIntervalMinutes} דק').`);
         }
       } else {
-        console.log(`✅ הטמפרטורה בטווח התקין. אין חריגה.`);
+        console.log(`✅ המקרר במצב תקין לחלוטין. לא נדרשת פעולה.`);
       }
     }
 
-    return NextResponse.json({ success: true, message: "Scan completed successfully" }, { status: 200 });
+    return NextResponse.json({ success: true, message: "Smart dynamic scan completed" }, { status: 200 });
   } catch (error) {
-    console.error("❌ Error during cron logic:", error.message);
+    console.error("❌ Error during smart cron execution:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
