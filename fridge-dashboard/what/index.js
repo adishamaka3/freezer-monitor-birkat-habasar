@@ -28,7 +28,8 @@ const client = new Client({
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--disable-gpu'
+            '--disable-gpu',
+            '--js-flags="--max-old-space-size=150"' // מגביל את מנוע הג'אווהסקריפט של כרום שלא יקח יותר מ-150 מגה!
         ]
     }
 });
