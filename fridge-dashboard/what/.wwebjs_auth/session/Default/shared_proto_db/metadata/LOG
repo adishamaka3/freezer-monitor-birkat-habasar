@@ -1,2 +1,3 @@
-2026/06/04-02:18:35.668 c930 Creating DB D:\ESP32\atar\fridge-dashboard\what\.wwebjs_auth\session\Default\shared_proto_db\metadata since it was missing.
-2026/06/04-02:18:35.893 c930 Reusing MANIFEST D:\ESP32\atar\fridge-dashboard\what\.wwebjs_auth\session\Default\shared_proto_db\metadata/MANIFEST-000001
+2026/06/04-02:35:25.195 ac48 Reusing MANIFEST D:\ESP32\atar\fridge-dashboard\what\.wwebjs_auth\session\Default\shared_proto_db\metadata/MANIFEST-000001
+2026/06/04-02:35:25.195 ac48 Recovering log #3
+2026/06/04-02:35:25.195 ac48 Reusing old log D:\ESP32\atar\fridge-dashboard\what\.wwebjs_auth\session\Default\shared_proto_db\metadata/000003.log 

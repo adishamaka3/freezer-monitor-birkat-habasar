@@ -1,2 +1,3 @@
-2026/06/04-02:18:35.803 7c1c Creating DB D:\ESP32\atar\fridge-dashboard\what\.wwebjs_auth\session\Default\Local Storage\leveldb since it was missing.
-2026/06/04-02:18:36.498 7c1c Reusing MANIFEST D:\ESP32\atar\fridge-dashboard\what\.wwebjs_auth\session\Default\Local Storage\leveldb/MANIFEST-000001
+2026/06/04-02:35:25.058 c5a8 Reusing MANIFEST D:\ESP32\atar\fridge-dashboard\what\.wwebjs_auth\session\Default\Local Storage\leveldb/MANIFEST-000001
+2026/06/04-02:35:25.070 c5a8 Recovering log #3
+2026/06/04-02:35:25.072 c5a8 Reusing old log D:\ESP32\atar\fridge-dashboard\what\.wwebjs_auth\session\Default\Local Storage\leveldb/000003.log 
