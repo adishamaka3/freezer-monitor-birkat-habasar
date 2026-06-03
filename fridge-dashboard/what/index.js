@@ -29,7 +29,18 @@ const client = new Client({
             '--no-first-run',
             '--no-zygote',
             '--disable-gpu',
-            '--js-flags="--max-old-space-size=150"' // מגביל את מנוע הג'אווהסקריפט של כרום שלא יקח יותר מ-150 מגה!
+            '--disable-extensions',
+            '--disable-default-apps',
+            '--disable-net-info-service',
+            '--disable-background-networking',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-breakpad',
+            '--disable-client-side-phishing-detection',
+            '--disable-component-extensions-with-background-pages',
+            '--disable-ipc-flooding-protection',
+            '--disable-renderer-backgrounding',
+            '--js-flags="--max-old-space-size=150"' // חונק את הזיכרון של כרום ל-150 מגה גג
         ]
     }
 });
