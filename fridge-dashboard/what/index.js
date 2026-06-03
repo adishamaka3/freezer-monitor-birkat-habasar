@@ -21,6 +21,7 @@ const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
         headless: true,
+        // הפקודות האלו חיוניות לשרתים עם מעט זיכרון כמו Render
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -31,16 +32,14 @@ const client = new Client({
             '--disable-gpu',
             '--disable-extensions',
             '--disable-default-apps',
-            '--disable-net-info-service',
-            '--disable-background-networking',
-            '--disable-background-timer-throttling',
-            '--disable-backgrounding-occluded-windows',
-            '--disable-breakpad',
-            '--disable-client-side-phishing-detection',
-            '--disable-component-extensions-with-background-pages',
-            '--disable-ipc-flooding-protection',
-            '--disable-renderer-backgrounding',
-            '--js-flags="--max-old-space-size=150"' // חונק את הזיכרון של כרום ל-150 מגה גג
+            '--proxy-server="direct://"',
+            '--proxy-bypass-list=*',
+            '--disable-dev-shm-usage',
+            '--disable-setuid-sandbox',
+            '--no-sandbox',
+            '--disable-web-security',
+            '--disable-features=IsolateOrigins,site-per-process',
+            '--js-flags="--max-old-space-size=150"'
         ]
     }
 });
