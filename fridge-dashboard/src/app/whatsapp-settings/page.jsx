@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 
-// הכתובת המדויקת של השרת שלך ב-Render
-const WHATSAPP_BOT_URL = 'https://freezer-monitor-birkat-habasar-whatsapp.onrender.com';
+// משתמש במשתנה הסביבה שהגדרנו, ואם הוא לא קיים משתמש בלוקאל הוסטינג המקומי של המחשב
+const WHATSAPP_BOT_URL = process.env.NEXT_PUBLIC_WHATSAPP_API_URL || 'http://localhost:10000';
 
 export default function WhatsappSettings() {
     const [status, setStatus] = useState('loading'); // loading, disconnected, ready
@@ -11,7 +11,7 @@ export default function WhatsappSettings() {
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        // פונקציה שמושכת את הסטטוס מהשרת ב-Render
+        // פונקציה שמושכת את הסטטוס מהשרת המקומי או הענן
         const checkStatus = async () => {
             try {
                 const res = await fetch(`${WHATSAPP_BOT_URL}/api/whatsapp-status`);
@@ -23,14 +23,14 @@ export default function WhatsappSettings() {
                 setError(null);
             } catch (err) {
                 console.error('Error fetching WhatsApp status:', err);
-                setError('לא מצליח להתחבר לשרת הבוט. ודא ש-Render במצב Live.');
+                setError('לא מצליח להתחבר לשרת הבוט. ודא שתוכנת הבוט (PM2) רצה ברקע של המחשב בעסק.');
             }
         };
 
         // מריץ בדיקה מיד כשנכנסים לדף
         checkStatus();
 
-        // בודק סטטוס אוטומטית בכל 5 שניות כדי לזהות מתי המשתמש סרק
+        // בודק סטטוס אוטומטית בכל 5 שניות
         const interval = setInterval(checkStatus, 5000);
         return () => clearInterval(interval);
     }, []);
@@ -59,11 +59,11 @@ export default function WhatsappSettings() {
                 {status === 'loading' && !error && (
                     <div>
                         <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#4caf50' }}>בודק סטטוס חיבור...</div>
-                        <p style={{ color: '#888' }}>מתחבר לשרת הבוט ב-Render, אנא המתן קטנה...</p>
+                        <p style={{ color: '#888' }}>מתחבר לשרת הבוט המקומי, אנא המתן קטנה...</p>
                     </div>
                 )}
 
-                {/* מצב מנותק - מציג את ה-QR בצורה ויזואלית */}
+                {/* מצב מנותק */}
                 {status === 'disconnected' && !error && (
                     <div>
                         <div style={{ display: 'inline-block', padding: '6px 12px', borderRadius: '20px', backgroundColor: '#ffebee', color: '#c62828', fontWeight: 'bold', marginBottom: '20px' }}>
@@ -74,7 +74,6 @@ export default function WhatsappSettings() {
 
                         {qrCode ? (
                             <div style={{ margin: '20px 0', display: 'flex', justifyContent: 'center' }}>
-                                {/* יצירת תמונת QR יציבה מתוך הטקסט שהשרת מחזיר */}
                                 <img 
                                     src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrCode)}`} 
                                     alt="WhatsApp QR Code"
@@ -95,11 +94,11 @@ export default function WhatsappSettings() {
                 {status === 'ready' && !error && (
                     <div style={{ padding: '20px 0' }}>
                         <div style={{ display: 'inline-block', padding: '6px 12px', borderRadius: '20px', backgroundColor: '#e8f5e9', color: '#2e7d32', fontWeight: 'bold', marginBottom: '20px' }}>
-                            🟢 מחובר לענן
+                            🟢 מחובר למחשב המקומי
                         </div>
                         <div style={{ fontSize: '64px', marginBottom: '15px' }}>✅</div>
                         <h3 style={{ color: '#2e7d32', margin: '0 0 10px 0' }}>המערכת מחוברת בהצלחה!</h3>
-                        <p style={{ color: '#666', fontSize: '14px' }}>הבוט מאזין כעת למקררים וישלח התראות וואטסאפ אוטומטיות בזמן אמת לגבי טמפרטורות חריגות.</p>
+                        <p style={{ color: '#666', fontSize: '14px' }}>הבוט מאזין כעת למקררים וישלח התראות וואטסאפ אוטומטיות מהמחשב בעסק בזמן אמת לגבי טמפרטורות חריגות.</p>
                     </div>
                 )}
             </div>
